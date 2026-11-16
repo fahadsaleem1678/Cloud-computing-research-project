@@ -1,0 +1,13 @@
+trace,metric,n,hkd_minus_greedy,ci_low,ci_high
+steady,p95_ms,40.0000,-17.4726,-18.6156,-16.3295
+steady,miss_pct,40.0000,-10.6750,-11.6940,-9.6560
+steady,switches_per_min,40.0000,-7.1800,-7.7221,-6.6379
+step,p95_ms,40.0000,-2.1134,-2.4868,-1.7400
+step,miss_pct,40.0000,-3.3833,-3.7499,-3.0168
+step,switches_per_min,40.0000,-2.5350,-2.7803,-2.2897
+bursty,p95_ms,40.0000,11.3416,10.1358,12.5473
+bursty,miss_pct,40.0000,0.0417,-0.5822,0.6655
+bursty,switches_per_min,40.0000,-4.1300,-4.4708,-3.7892
+periodic,p95_ms,40.0000,1.6156,1.0203,2.2108
+periodic,miss_pct,40.0000,-5.2750,-5.8527,-4.6973
+periodic,switches_per_min,40.0000,-8.1000,-8.5092,-7.6908

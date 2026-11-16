@@ -33,7 +33,11 @@ The evaluation will focus on median, P95, and P99 end-to-end latency; SLO violat
 ## Repository contents
 
 - [Phase 1 research proposal](G31_i220800_i220764_Evaluating_Hysteresis_Aware_Adaptive_DNN_Split_Inference_under_Fluctuating_Edge_Cloud_Network_Conditions.pdf)
-- Experimental code, network profiles, configurations, logs, and analysis scripts will be added as the project progresses.
+- [Current two-column manuscript source](main.tex)
+- [Stylized controller simulation and its run-level outputs](simulation/)
+- [CIFAR-10 two-node split-inference implementation](experiment/)
+
+The simulation outputs are calculated from declared assumptions and are not DNN latency measurements. The `experiment/` implementation is ready to be configured for a measured study; no benchmark logs or trained checkpoints are committed.
 
 ## Researchers
 
@@ -42,4 +46,4 @@ The evaluation will focus on median, P95, and P99 end-to-end latency; SLO violat
 
 ## Status
 
-The project is currently in the research proposal and experimental planning phase. The research gap and expected outcomes described here are hypotheses to be tested, not final claims.
+The manuscript includes a reproducible preliminary controller simulation. The two-node PyTorch code has not been run for this repository, so its performance remains to be measured. The research gap and expected DNN outcomes remain hypotheses.
