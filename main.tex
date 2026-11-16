@@ -1,0 +1,256 @@
+\documentclass[10pt,a4paper,twocolumn]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern,microtype}
+\usepackage[a4paper,margin=18mm,columnsep=7mm]{geometry}
+\usepackage{booktabs,array,enumitem,amsmath,url}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2pt plus 1pt minus 1pt}
+\setlist{nosep,leftmargin=*}
+\emergencystretch=2em
+\urlstyle{same}
+
+\title{Evaluating Hysteresis-Aware Adaptive DNN Split Inference\\under Fluctuating Edge--Cloud Network Conditions}
+\author{Zohaib Hassan (22i-0800) \and Fahad Saleem (22i-0764)}
+\date{Group G-31, Section A-B}
+\begin{document}
+\maketitle
+\vspace{-1.5em}
+
+\begin{abstract}
+Deep neural network (DNN) split inference divides computation between an edge device and a remote server, but the best partition may change with network conditions. Runtime adaptation and switching-cost awareness are established prior art. This study asks when a hysteresis margin ($H$), persistence requirement ($K$), and minimum dwell period ($D$) improve the stability of a two-node, fixed-accuracy service, and when they delay a useful switch. A review of 31 DOI-verified journal articles motivates a matched future test using MobileNetV2 and ResNet18, CIFAR-10 images, and controlled network traces. As a preliminary computational result, a reproducible stylized simulation compares eight controller variants and three static baselines on four synthetic traces. In that simulation, the joint controller reduces greedy switching under a noisy steady link, but increases P95 latency during short bandwidth collapses. These results are conditional on stated synthetic costs; no DNN or hardware latency has yet been measured. The project repository is \url{https://github.com/fahadsaleem1678/Cloud-computing-research-project}.
+\end{abstract}
+
+\section{Introduction and Research Problem}
+Running an entire DNN on a resource-constrained edge device avoids network transfer but can be slow. Offloading the complete input provides more computation, yet response time depends on bandwidth, round-trip time, congestion, and loss. Split inference runs early layers locally, transmits an intermediate activation, and completes the remaining layers on a server \cite{edgent,survey}. The useful cut therefore depends on both computation and transfer cost.
+
+A fixed cut selected under one network condition may become unsuitable after conditions change. A purely greedy controller can instead oscillate when noisy measurements make another cut appear marginally better. Repartitioning can incur handover, warm-up, memory, and control overhead \cite{serverless,rap}. The research problem is whether explicit temporal stability rules reduce harmful switching without slowing response to sustained changes. Per-request tail latency and deadline misses are the primary service concerns, rather than mean latency alone.
+
+The intended contribution is a matched, independently ablated evaluation of three specific stability controls on a fixed-accuracy testbed. Adaptive placement and switching cost themselves are not new.
+
+\section{Literature Review}
+\subsection{Selection and evidence boundaries}
+This targeted, non-exhaustive review uses 31 journal articles whose titles, publication venues, and DOIs were checked against Crossref journal-article records. It covers placement, dynamic decisions, communication, resource control, and related inference objectives. The studies vary substantially in architecture and workload, so their published performance numbers are not treated as a common benchmark. The findings below are those of the cited authors, not measurements made by this project.
+
+\subsection{Partition placement and topology}
+A recent survey organizes DNN partitioning across end, edge, and cloud architectures \cite{survey}. Earlier two-node work couples partition selection with early exits \cite{edgent}, while three-tier inference and portable learned partitioning broaden the placement space \cite{liu2023,partner}. Serverless split computing and batch scheduling add resource and cost decisions to the cut choice \cite{serverless,batch}. Multi-device pipeline optimization, path selection, and optical slice delivery address different network and throughput objectives \cite{dnnpipe,huang,optical}. Joint partition deployment, multimodal placement, and IoT device parallelization likewise alter the available execution topology \cite{jointdeploy,hga,eddnn}. These settings are relevant context, but they cannot establish the isolated effect of a temporal switching rule on a fixed two-node service.
+
+\subsection{Online adaptation under variable conditions}
+Dynamic scheduling, browser--server collaboration, and per-frame video partitioning select execution plans as conditions change \cite{dids,nnweb,scissor}. Real-time mobile partitioning and a digital-twin-assisted controller explicitly adapt to changing resource states \cite{rap,digitaltwin}. Threshold adaptation, migration scheduling, and self-organized inference address other forms of network or topology variation \cite{uncertainty,migration,selforganized}. Multi-UAV migration and hierarchical split-inference scheduling operate under still different resource constraints \cite{uav,hierarchical}. A recent survey frames collaboration, adaptation, and resilience across uncertain edge networks \cite{resilience}. Together, these articles show that adaptive inference itself is established prior art. They do not supply a directly matched ablation of the gain margin, persistence count, and minimum dwell time proposed here.
+
+\subsection{Coupled objectives and transfer mechanisms}
+Controlled lossy transfer, adaptive feature compression, and dynamic voltage/frequency control combine placement with communication or energy choices \cite{copilot,feature,dvfo}. UDP-based vision-transformer transfer also changes the transport mechanism \cite{vitudp}. Privacy-aware channel partitioning and attacks against latent representations expose concerns beyond latency \cite{privguard,latentattacks}; blockchain-backed collaboration considers integrity and coordination \cite{cobc}. Cloud--edge intrusion detection illustrates an application-specific inference objective \cite{cecn}. These studies make clear why accuracy, transfer protocol, privacy mechanism, and workload should be held constant in the primary stability-control comparison, then varied in separately labeled sensitivity analyses.
+
+\section{Research Gap, Questions, and Objectives}
+Among the selected works, the review did not find a matched evaluation that separately and jointly ablates a minimum predicted-gain margin ($H$), consecutive supporting observations ($K$), and minimum residence time ($D$) for two-node, fixed-accuracy split inference under structured bandwidth variation, while reporting P95/P99 and deadline outcomes alongside measured transition and adaptation costs. This is a bounded evidence gap, not a universal novelty claim. The counter-hypothesis is equally important: stability controls may worsen service quality after a sustained abrupt change by postponing a beneficial switch.
+
+\begin{enumerate}[label=\textbf{RQ\arabic*.}]
+\item Under steady, step-change, bursty, and periodic networks, when does an $H/K/D$ controller improve P95 latency and deadline-violation rate relative to edge-only, cloud-only, best fixed-split, and state-aware greedy decisions at the same accuracy and offered load?
+\item What are the separate and combined effects of $H$, $K$, and $D$ on switch frequency, transition cost, adaptation delay, P99 latency, and throughput?
+\item Which trace and device regimes make the controls beneficial, neutral, or harmful, and how sensitive are conclusions to the deadline and parameter choices?
+\end{enumerate}
+
+The objectives are to build a reproducible two-node testbed; implement comparable placement logic with deviations from published systems documented; add and ablate $H$, $K$, and $D$ without changing model outputs; compare matched real-image workloads on held-out traces; and report uncertainty, negative outcomes, limitations, and reproducibility material.
+
+\section{Proposed Methodology}
+\subsection{Research design and testbed}
+The study is planned as a controlled repeated-measures experiment. Each policy will process the same image and request sequence under the same network profile; execution order will be randomized where practical. Policy, model, network pattern and severity, and edge load are independent variables. Outcome variables are defined in Section~\ref{sec:evaluation}. A minimum viable configuration uses two Linux-capable containers with documented CPU and memory limits. A distinct edge device or remote server may strengthen external validation but is not presumed available. PyTorch will execute model segments, an HTTP or gRPC service will transfer activations, and Linux traffic control will impose recorded network profiles. Emulation supplies controlled conditions; request timings and predictions must be measured, not fabricated.
+
+\subsection{Deep learning approach and data source}
+CIFAR-10 is the primary dataset: 60,000 labeled $32\times32$ color images in 10 classes, with 50,000 training and 10,000 test images. These public images are secondary data. Latency, bytes, switch events, throughput, resource use, and correctness checks will be primary data generated by the later testbed. MobileNetV2 and ResNet18 will use CIFAR-10-compatible trained or validated checkpoints; weights, preprocessing, precision, and input order will be frozen across policies. Test images will not tune controller parameters. Candidate cuts will be at major model-stage boundaries, subject to a pilot showing meaningful compute/activation trade-offs. An ImageNet 1,000-class head will not be treated as a valid CIFAR-10 classifier without adaptation and validation. If the small images yield too few meaningful cuts, a higher-resolution public classification dataset may be added as a separately reported sensitivity study.
+
+\subsection{Policies and recent published anchor}
+Comparators will include local edge-only inference, full remote inference, a fixed cut selected on calibration conditions, and a state-aware greedy controller selecting the lowest estimated latency cut at each decision epoch. Proposed variants add $H$ (minimum estimated benefit before switching), $K$ (consecutive supporting decisions), and $D$ (minimum residence time or request count), individually, pairwise, and jointly. Parameters and a service deadline will be set using separate calibration traces before held-out testing; deadline and parameter sensitivity will be reported.
+
+DNN-Scissor \cite{scissor} is the provisional recent published anchor because its paper describes dynamic per-frame partition choice under changing device and network state. The transferable logic is state-aware choice among candidate cuts. A transparent adaptive analogue on the common testbed will use the same latency components and cuts as the $H/K/D$ variants. It will not reproduce DNN-Scissor's trained policy, video pipeline, hardware, or numerical results. The comparison is therefore an adaptation of its decision principle, not an exact reproduction. Instructor acceptance of the anchor remains to be confirmed.
+
+\subsection{Network scenarios and procedure}
+Steady profiles will offer low, medium, and high bandwidth references; a step profile will contain a sustained change; bursty profiles will introduce brief collapses, delay spikes, or loss; and periodic profiles will alternate good and poor states. Actual bandwidth, round-trip time, jitter, and loss will be recorded alongside configured values. Constant-rate and short-burst request traces will use fixed seeds and timestamped configurations.
+
+The testbed will profile local and remote stage execution and activation sizes after warm-up. A pilot will confirm valid cuts, timing noise, and transition cost, then narrow the full scenario grid to discriminating conditions. Final duration and run count will be fixed after pilot calibration and documented before held-out comparisons. Per-request IDs will link timestamps for queueing, edge computation, serialization, transfer, server computation, and response. Selected cuts and decisions will be logged. Code, configurations, seeds, trace provenance, results, and figure scripts are planned for release with the completed measured study.
+
+\subsection{Formal latency model and decision state}
+Let $\mathcal C$ be the finite set of valid cut points, including complete local and complete remote inference. At decision epoch $t$, the currently deployed cut is $c_t\in\mathcal C$. A cut $c$ has profiled edge time $E(c)$, server time $S(c)$, and serialized transfer size $B(c)$. With estimated link rate $\widehat R_t$ and round-trip component $\widehat Q_t$, a first-order prediction is
+\begin{equation}
+\widehat L_t(c)=E(c)+S(c)+\frac{8B(c)}{\widehat R_t}+\widehat Q_t+\widehat C_t(c),
+\label{eq:latency}
+\end{equation}
+where units must be made consistent and $\widehat C_t(c)$ covers measured serialization and queueing. The transfer and round-trip terms are zero for local-only execution. Remote-only execution transmits the input instead of an intermediate tensor. Equation~\ref{eq:latency} is a decision model, not an assertion that a real network follows this additive form exactly. It does not automatically include a one-time switch cost; that cost is recorded separately and charged to the request that triggers the transition. The implementation should check whether the simple predictor is calibrated, especially near a decision boundary.
+
+The greedy candidate $c_t^*$ minimizes $\widehat L_t(c)$ over cuts whose full model outputs match the reference within a fixed tolerance. Its relative predicted improvement over the current cut is
+\begin{equation}
+g_t=\frac{\widehat L_t(c_t)-\widehat L_t(c_t^*)}{\widehat L_t(c_t)}.
+\label{eq:gain}
+\end{equation}
+For the proposed controller, a different cut is eligible only if $g_t\ge H$, the same candidate has been favored for at least $K$ consecutive epochs, and at least $D$ epochs have elapsed since the last change. An unsupported observation resets the persistence counter. The controller's decision time, state updates, and actual transition are timestamped. This definition prevents an apparent gain calculated for one cut from being accumulated as support for another. It also specifies what happens when the estimated winner alternates between two cuts, a detail that otherwise makes implementations hard to compare.
+
+\subsection{Matched policy grid}
+The eight adaptive settings are the full factorial combinations of enabling or disabling $H$, $K$, and $D$. With all three disabled, the controller is the greedy comparator. Edge-only, cloud-only, and a calibration-selected fixed split add three static baselines. All eleven policies use the same candidate cuts and request traces. Enabling one rule changes only that rule; for example, the $K$-only variant has zero margin and no dwell restriction. This construction makes each main effect and interaction interpretable on the same testbed. Calibration data will choose nonzero parameter values before held-out evaluation, and a separately declared sensitivity grid will test nearby values. Parameters will not be selected by looking for the most favorable reported test result.
+
+\begin{table}[t]
+\centering\small
+\caption{Factorial adaptive-controller settings. Greedy is the first row.}
+\label{tab:factorial}
+\begin{tabular}{@{}lccc@{}}\toprule
+Variant & Margin $H$ & Persistence $K$ & Dwell $D$\\\midrule
+Greedy & off & off & off\\
+H & on & off & off\\
+K & off & on & off\\
+D & off & off & on\\
+HK & on & on & off\\
+HD & on & off & on\\
+KD & off & on & on\\
+HKD & on & on & on\\\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Trace construction and execution order}
+Each network trace will be represented by a time-indexed sequence of target bandwidth, delay, jitter, and loss. A steady trace tests whether noisy observations alone create unnecessary cut changes. A step trace changes once and then remains at its new level, exposing the delay caused by persistence and dwell. A bursty trace adds brief bandwidth collapses or delay spikes, testing whether a controller should ignore a transient. A periodic trace alternates conditions long enough to favor different cuts and exposes the cost of repeatedly adapting. These patterns should include boundary cases where estimated costs are close, not only extreme links for which every policy makes the same choice. Trace files, the command that applies them, and measured link probes must be retained so configured conditions can be distinguished from achieved conditions.
+
+Requests will be scheduled open-loop from a timestamped arrival file. A fixed input order and seed will be reused across policies, while policy execution order will be rotated by run to limit drift from temperature or background load. The server and edge processes will be warmed with a fixed number of unreported requests; warm-up must not include samples from the scored trace. Each run records hardware identity, CPU and memory limits, precision, package versions, checkpoint hash, and time synchronization method. A failed request remains in the data with an error code and cannot simply be dropped from latency summaries. Network faults and retries will be counted and reported separately. The primary paper will distinguish a completed-response latency distribution from request-level failure and deadline rates.
+
+\subsection{Feasibility and run-count accounting}
+The full factorial design has eight adaptive conditions and three static baselines. Five traces, two models, and ten replications would therefore require $5\times2\times11\times10=1100$ runs, or about 18.3 hours of nominal trace time at 60 seconds per run, before warm-up, resets, and profiling. A pilot can identify invalid cuts and estimate variance, but the final run count and exclusion rules should be frozen before the held-out comparison. If resources force a smaller study, the reduced matrix and the lost contrasts will be reported rather than silently omitting difficult conditions. The workload generator should save the exact arrival and image order, so a rerun does not depend on the runtime random-number state.
+
+\subsection{Per-request records and integrity checks}
+Each output record will contain a run ID, request ID, policy, model and checkpoint hash, trace name, arrival time, decision epoch, selected cut, estimated bandwidth, predicted latency for every candidate, actual component times, response time, byte count, prediction, target class, and status. Event records will mark every cut change, candidate streak, margin calculation, and dwell decision. Requests that span a network-state boundary will be attributed by arrival time and identified separately in the analysis. The complete local model will be run as a correctness reference on a fixed validation subset; output differences beyond tolerance will invalidate that cut for the fixed-accuracy comparison. Logs will be written before aggregate tables are generated, and an analysis script will calculate every table cell from those logs. This audit trail matters because a visually convincing result is not reproducible without the data and code path that produced it.
+
+\section{Evaluation Plan}\label{sec:evaluation}
+End-to-end latency runs from request creation to prediction response and will be summarized by median, P95, and P99. SLO violation rate is the fraction exceeding a predeclared deadline; deadline sensitivity will be shown. Throughput is completed inferences per second. Communication volume covers bytes per inference and trace. Switch frequency is cut changes per minute. Transition cost records latency or downtime attributable to a change; adaptation delay runs from a sustained network step to a new stable cut. Controller overhead is decision and monitoring time or resource use per interval. Correctness will be checked against the unsplit reference within a stated numerical tolerance; frozen-checkpoint classification accuracy will also be reported.
+
+Repeated matched runs will expose identical traces and request orders to each policy. The analysis will show run and request counts, paired differences, and 95\% confidence intervals or paired bootstrap intervals. It will report beneficial, neutral, and harmful regimes. Published cross-paper figures will not be treated as head-to-head benchmark results because platforms, workloads, and metrics differ.
+
+\subsection{Primary comparison and uncertainty}
+The primary measured contrast will compare the joint $HKD$ controller with the state-aware greedy controller within the same model, trace, device configuration, and request schedule. For each matched run pair $r$, the analysis will calculate a run-level difference
+\begin{equation}
+\Delta_r=Q_{0.95}(L_{r,HKD})-Q_{0.95}(L_{r,greedy}),
+\label{eq:paired}
+\end{equation}
+where $Q_{0.95}$ is the empirical P95 of completed-request latency. The mean and median of $\Delta_r$ will be shown, along with its run count and an interval obtained by resampling whole matched run pairs. This keeps the unit of replication as a run, rather than treating thousands of adjacent requests on the same shaped link as independent observations. The same pairing will be used for deadline-violation percentage and switching rate. Separate intervals will be reported for each trace and model. A pooled estimate across heterogeneous traces will be secondary and will identify its weighting rule; otherwise a long easy trace could dominate a short difficult one merely because it contains more requests.
+
+The primary conclusion will consider both tail latency and deadline violations. A negative $\Delta_r$ favors $HKD$ for P95, but a policy that lowers P95 while causing more failed requests or incorrect predictions cannot be described as a service improvement. P99, mean and median latency, throughput, bytes, transition cost, and adaptation delay are secondary outcomes that explain mechanisms and expose costs. For the full factorial grid, effects of $H$, $K$, and $D$ will be estimated by comparing matched cells with the factor toggled while holding the other two settings fixed. Interactions will be described explicitly: the effect of $K$ may differ when $H$ is enabled. The analysis will show all eight cells even if an individual variant performs poorly. Confidence intervals across many exploratory contrasts will not be interpreted as if every interval were an independently predeclared primary test.
+
+\subsection{Failures, censoring, and validation gates}
+A request that returns no response before the observation window ends has no observed completion latency. It will count as a failure and as a deadline violation; it will not be assigned an invented millisecond value for a latency percentile. The paper will therefore report completion rate next to P95 and P99 and will state the denominator for every rate. If a run terminates because the edge or server process fails, the number of requests affected and the restart rule will be disclosed. Runs will be excluded only for preregistered infrastructure faults that prevent all policies from receiving the intended trace, with a separate table listing each exclusion. Excluding a run because its latency is unusually high would bias the service-tail result.
+
+Before performance comparisons, the experiment must pass three validation gates. First, each cut must produce the same prediction as the unsplit fixed-precision reference within a stated numerical tolerance on the validation sample. Second, measured bandwidth, delay, and loss must be checked against the trace specification, and a deviation threshold must be fixed before evaluating outcomes. Third, component timestamps must be monotonic and account for the end-to-end interval within a small stated clock error. These gates protect against attributing a result to controller logic when it was actually caused by a broken model split, failed traffic shaping, or inconsistent timing. Accuracy on the held-out test set is reported separately from numerical agreement with the unsplit model; matching an incorrect reference prediction is still a correctness check, not evidence of good classification accuracy.
+
+\subsection{Practical interpretation of a result}
+The final report will distinguish statistical evidence from practical value. A small P95 change may be repeatable yet irrelevant to a service whose deadline is far away; conversely, a modest percentile change can matter if many requests lie near that deadline. For each network regime, plots will show the latency distribution, the deadline line, and switch events over time in addition to aggregate tables. A step trace will include a focused window immediately after the change, so adaptation delay cannot be hidden by a long stable period. A bursty trace will separate intervals inside and outside collapses, showing whether stability rules filter noise or suppress useful responses. These views are necessary to explain why a policy helped or hurt, not merely whether its final average was lower.
+
+\section{Preliminary Computational Results}
+\subsection{Scope and reproducible setup}
+To exercise the decision rules before building the DNN testbed, we implemented a deterministic stylized simulator in Node.js. It generates 300 one-second request epochs per trace and repeats each of four traces 40 times with recorded seeds. All eleven policies receive the same actual bandwidth sequence and request-level jitter within a replication; only their cut decisions differ. The simulator evaluates the three candidate cuts in Table~\ref{tab:assumptions} using Equation~\ref{eq:latency}, with an additional 22 ms charged on a request that changes cut. Estimated bandwidth is the actual rate multiplied by log-normal observation noise with log-scale standard deviation 0.24. A shared zero-mean Gaussian request jitter with standard deviation 5 ms is added to realized latency. The SLO deadline is 120 ms. The joint controller uses $H=0.08$, $K=3$, and $D=8$ epochs. These values and component costs are declared assumptions for this preliminary computation; none was fitted to a MobileNetV2, ResNet18, CIFAR-10, or physical-link measurement.
+
+\begin{table}[t]
+\centering\small
+\caption{Assumed per-cut costs in the stylized simulation. Transfer time is $8000B/R$ ms for $B$ in MB and $R$ in Mb/s.}
+\label{tab:assumptions}
+\begin{tabular}{@{}lrrrr@{}}\toprule
+Cut & Edge ms & Server ms & MB & RTT ms\\\midrule
+Local & 115 & 0 & 0 & 0\\
+Split & 55 & 20 & 0.24 & 12\\
+Remote & 0 & 50 & 0.95 & 12\\\bottomrule
+\end{tabular}
+\end{table}
+
+The steady trace fluctuates smoothly around 100 Mb/s. The step trace runs at 15 Mb/s for 150 epochs, then 150 Mb/s. The bursty trace runs at 150 Mb/s except for six low-rate epochs out of every 40, where it falls to 12 Mb/s. The periodic trace alternates 25 and 180 Mb/s every 25 epochs. These patterns are synthetic and deliberately expose a range of decision conditions; they are not presented as sampled wireless traffic. A fixed-split baseline always selects the split cut. The simulator also evaluates edge-only, remote-only, greedy, and every nonempty combination of the three controls, although Table~\ref{tab:simulation} focuses on the main greedy--joint contrast. The supplied script writes per-run and aggregate CSV files, so the figures can be recomputed without manual transcription.
+
+\begin{table*}[t]
+\centering\small
+\caption{Actual output of the stylized simulator, averaged over 40 matched replications per trace. P95 is the mean of per-run P95 latencies, misses are percentages of requests over 120 ms, and switches are per minute. These are simulation outputs, not DNN measurements.}
+\label{tab:simulation}
+\begin{tabular}{@{}llrrr@{}}\toprule
+Trace & Policy & P95 (ms) & Misses (\%) & Switches/min\\\midrule
+Steady & Greedy & 133.5 & 12.4 & 7.4\\
+Steady & HKD & 116.1 & 1.8 & 0.2\\
+Step & Greedy & 123.8 & 11.6 & 2.7\\
+Step & HKD & 121.7 & 8.3 & 0.2\\
+Bursty & Greedy & 130.1 & 12.0 & 7.1\\
+Bursty & HKD & 141.4 & 12.1 & 3.0\\
+Periodic & Greedy & 127.5 & 19.8 & 10.3\\
+Periodic & HKD & 129.1 & 14.5 & 2.2\\\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{What the simulation shows}
+Under the noisy steady trace, joint hysteresis lowers mean run-level P95 from 133.5 to 116.1 ms and reduces switches from 7.4 to 0.2 per minute. The paired P95 difference (HKD minus greedy) is $-17.47$ ms, with an approximate 95\% normal interval of $[-18.62,-16.33]$ ms across the 40 paired replications. This is a result of the stated cost and observation-noise model: greedy responds to small estimated gains and pays the transition charge frequently. The always-split policy actually has a lower P95 of 114.5 ms on this particular steady trace, showing that the joint adaptive policy is not uniformly best even in the favorable case.
+
+The bursty trace exposes a failure regime. Joint hysteresis reduces switching from 7.1 to 3.0 per minute, but mean P95 rises from 130.1 to 141.4 ms. The paired P95 change is $+11.34$ ms, with an approximate 95\% interval of $[10.14,12.55]$ ms. Persistence and dwell can hold a cut through a short collapse, so fewer transitions do not guarantee a better tail. The miss-rate difference on this trace is only $+0.04$ percentage points, with an interval spanning zero; the P95 and deadline conclusions therefore differ. Under the periodic trace, HKD also has a slightly higher P95 (129.1 versus 127.5 ms), while it makes fewer switches and fewer deadline misses. Reporting all three outcomes avoids hiding this trade-off behind one selected metric.
+
+For the sustained step, the greedy policy reaches the new split cut after a mean of 0.1 s, whereas HKD reaches it after 2.8 s. The slower adaptation is expected from the consecutive-observation rule, even though its full-trace P95 is slightly lower in this parameterization because it avoids later noise-driven reversals. The experiment on a real two-node system must separately inspect the first requests after the step rather than rely only on a whole-trace percentile. It must also measure the true transition cost instead of assuming 22 ms. No conclusion about DNN inference speed, classification accuracy, or physical-network behavior follows directly from this stylized simulation.
+
+\subsection{Ablation of the three controls}
+Table~\ref{tab:ablation} uses the same run-level output to separate the three rules. On the steady trace, each single control reduces switching relative to greedy, but $D$ alone remains much less effective than $H$ or $K$: its P95 is 127.1 ms compared with 115.1 ms for $H$ and 114.9 ms for $K$. A dwell timer only blocks switches for a fixed interval; after that interval expires, a noisy estimate can still cause a move with a negligible predicted gain. The margin and persistence rules directly reject such weak or short-lived evidence. The steady result also makes the interpretation of the combined controller more precise: with these chosen parameter values, adding $D$ to $HK$ leaves the displayed P95 and switch rate unchanged. That is an observed redundancy within this synthetic trace, not proof that dwell time is generally unnecessary.
+
+\begin{table*}[t]
+\centering\small
+\caption{Full controller ablation from the stylized simulator. Values are means of 40 run-level summaries per trace. All times and link patterns are assumed, and no row represents a measured DNN service.}
+\label{tab:ablation}
+\begin{tabular}{@{}lrrrr@{}}\toprule
+Controller & Steady P95 (ms) & Steady switches/min & Bursty P95 (ms) & Bursty misses (\%)\\\midrule
+Greedy & 133.5 & 7.38 & 130.1 & 12.05\\
+$H$ & 115.1 & 0.49 & 121.8 & 6.53\\
+$K$ & 114.9 & 0.24 & 141.4 & 11.23\\
+$D$ & 127.1 & 3.81 & 159.5 & 13.51\\
+$HK$ & 116.1 & 0.20 & 141.4 & 11.37\\
+$HD$ & 115.5 & 0.46 & 122.4 & 7.48\\
+$KD$ & 114.9 & 0.24 & 141.4 & 11.92\\
+$HKD$ & 116.1 & 0.20 & 141.4 & 12.09\\\bottomrule
+\end{tabular}
+\end{table*}
+
+The bursty trace reverses the ranking. Margin alone has a P95 of 121.8 ms and a 6.53\% miss rate, both below the greedy values in this configuration. It discards weak, noise-driven switches while still reacting to a sufficiently large bandwidth collapse. Persistence alone has a higher P95 of 141.4 ms, despite fewer changes, because three consecutive favorable observations consume a substantial fraction of a six-epoch collapse. Dwell alone is worse still at 159.5 ms: a low-rate interval can begin soon after a switch, leaving the controller temporarily unable to move. Combining $K$ with $H$ or $D$ keeps bursty P95 at 141.4 ms in the displayed precision. These outcomes identify a mechanism for the adverse HKD tail in Table~\ref{tab:simulation}; the combined policy inherits the persistence delay. The ranking depends on burst duration, switch charge, and noise level, which should all be varied before making a deployment recommendation.
+
+The step and periodic traces provide additional checks on the interpretation. For the step, $H$ alone adapts after a mean of 0.18 s, while $K$ alone takes 2.48 s and $HKD$ takes 2.80 s. For periodic switching, $H$ alone reaches 123.1 ms P95 and 2.73 switches per minute; $D$ alone reaches 138.2 ms and 4.37 switches per minute. The periodic result shows that a dwell rule does not necessarily create the lowest switching rate when noisy estimates can trigger new moves as soon as the timer expires. These are descriptive comparisons from one preregistered parameter set in a simulator, not estimates of universal effects. A measured factorial experiment should report all eight controller cells, vary the parameter values, and inspect interactions rather than present only the best-performing variant after the fact.
+
+\subsection{Sensitivity and interpretation boundary}
+Three parameters deserve particular attention in the subsequent experiment. First, the relative margin $H$ should be swept from zero to values that may suppress genuinely useful changes; the location of that trade-off depends on prediction error. Second, the persistence length $K$ should be compared with the duration distribution of network disturbances, since a rule that filters short noise can also ignore a short but consequential outage. Third, the dwell period $D$ should be expressed both as epochs and elapsed time, because request arrival rate may change while a controller is resident at one cut. The switch penalty should be measured by transition type rather than treated as a constant: loading a new segment, moving an activation, and warming a server can have different costs. The SLO deadline must also be varied, because a P95 improvement need not imply a lower miss rate at every threshold. None of these sensitivity results is claimed by the present script; they are tests needed to assess whether the preliminary mechanism survives contact with real workloads.
+
+\subsection{Reproduction and next measurement}
+Running \texttt{node simulate.js} produces \texttt{simulation\_runs.csv}, \texttt{simulation\_summary.csv}, and \texttt{simulation\_paired\_effects.csv}. The source lists every cost, trace, seed rule, controller threshold, and percentile calculation. The next stage is to replace the assumed edge and server times, tensor sizes, link rates, and switching charge with profiled and measured values, then execute real images through the split models. A measured study will require additional output fields for inference correctness, transport bytes, failures, and device load. Until that stage is complete, Table~\ref{tab:simulation} is evidence about the controller logic under declared assumptions only.
+
+\section{Expected Contribution and Significance}
+The preliminary computational contribution is a reproducible controller implementation that exposes both a beneficial steady-link case and a harmful bursty-link case under explicit assumptions. The intended later academic contribution is measured evidence on the separate and combined effects of gain margin, persistence, and dwell time on adaptive split inference. The work may clarify a responsiveness--stability trade-off obscured by mean-latency-only reporting. Null or negative findings are also informative. For practitioners designing edge--cloud inference services, the eventual output is guidance on when to enable stability controls and how to monitor tails, deadline misses, and transition overhead. No improvement on a real DNN service is claimed.
+
+\section{Feasibility, Limitations, and Threats to Validity}
+The core measured design can run on two constrained containers; a physical or remote link would strengthen external validity if available. Emulated links may not capture all wireless behavior, so a subset should be checked on a real link when feasible. Hardware and checkpoint choices limit generalization; exact resource limits, versions, and preprocessing will be published. Timing noise will be addressed by warm-up, randomized order, repetition, and confidence intervals. CIFAR-10 may understate high-resolution activation-transfer costs. The experiment grid will be narrowed through a documented pilot without tuning on held-out traces. DNN-Scissor code access remains an evidence limitation and is not filled with assumed facts. The preliminary simulator assumes an additive latency model, fixed switching penalty, and synthetic network variation; its narrow confidence intervals quantify variability under those assumptions, not uncertainty about model validity. The measured study may therefore produce different rankings.
+
+\section{Conclusion}
+The reviewed evidence motivates a matched $H/K/D$ study rather than a broad claim of new adaptive partitioning. The reproducible preliminary computation shows that joint hysteresis can suppress noise-driven switching yet worsen the latency tail under short link collapses. The next steps are to confirm the anchor and resources, implement and pilot the two-node DNN comparison, and evaluate benefits and costs on held-out measured traces. The simulator's ranking is a hypothesis for that later experiment, not an empirical DNN finding.
+
+\begin{thebibliography}{99}
+\bibitem{edgent} En Li, Liekang Zeng, Zhi Zhou, et al., Edge AI: On-Demand Accelerating Deep Neural Network Inference via Edge Computing, \emph{IEEE Transactions on Wireless Communications}, vol. 19, no. 1, pp. 447--457, 2020, doi: \href{https://doi.org/10.1109/TWC.2019.2946140}{10.1109/TWC.2019.2946140}.
+\bibitem{liu2023} Guozhi Liu, Fei Dai, Xiaolong Xu, et al., An adaptive DNN inference acceleration framework with end–edge–cloud collaborative computing, \emph{Future Generation Computer Systems}, vol. 140, pp. 422--435, 2023, doi: \href{https://doi.org/10.1016/j.future.2022.10.033}{10.1016/j.future.2022.10.033}.
+\bibitem{partner} Soumendu Kumar Ghosh, Arnab Raha, Vijay Raghunathan, et al., PArtNNer: Platform-Agnostic Adaptive Edge-Cloud DNN Partitioning for Minimizing End-to-End Latency, \emph{ACM Transactions on Embedded Computing Systems}, vol. 23, no. 1, pp. 1--38, 2024, doi: \href{https://doi.org/10.1145/3630266}{10.1145/3630266}.
+\bibitem{copilot} Hyochan Kim, Ji Sub Choi, Jungrae Kim, et al., A DNN partitioning framework with controlled lossy mechanisms for edge-cloud collaborative intelligence, \emph{Future Generation Computer Systems}, vol. 154, pp. 426--439, 2024, doi: \href{https://doi.org/10.1016/j.future.2024.01.006}{10.1016/j.future.2024.01.006}.
+\bibitem{serverless} Haneul Ko, Hyeonjae Jeong, Daeyoung Jung, et al., Dynamic Split Computing Framework in Distributed Serverless Edge Clouds, \emph{IEEE Internet of Things Journal}, vol. 11, no. 8, pp. 14523--14531, 2024, doi: \href{https://doi.org/10.1109/JIOT.2023.3342438}{10.1109/JIOT.2023.3342438}.
+\bibitem{dids} Yuwei Yan, Yikun Hu, Qinyun Cai, et al., DIDS: A distributed inference framework with dynamic scheduling capability, \emph{Future Generation Computer Systems}, vol. 162, pp. 107459, 2025, doi: \href{https://doi.org/10.1016/j.future.2024.07.037}{10.1016/j.future.2024.07.037}.
+\bibitem{nnweb} Jiawei Liu, Bing Dong, Weilong Wang, et al., nnWeb: Towards efficient WebGPU-based DNN inference via automatic collaborative offloading, \emph{Computer Networks}, vol. 270, pp. 111489, 2025, doi: \href{https://doi.org/10.1016/j.comnet.2025.111489}{10.1016/j.comnet.2025.111489}.
+\bibitem{scissor} Yan Lyu, Likai Liu, Xuezhi Wang, et al., Learning to Partition: Dynamic Deep Neural Network Model Partitioning for Edge-Assisted Low-Latency Video Analytics, \emph{Machine Learning and Knowledge Extraction}, vol. 7, no. 4, pp. 117, 2025, doi: \href{https://doi.org/10.3390/make7040117}{10.3390/make7040117}.
+\bibitem{dnnpipe} Woobean Seo, Saehwa Kim, Seongsoo Hong, DNNPipe: Dynamic programming-based optimal DNN partitioning for pipelined inference on IoT networks, \emph{Journal of Systems Architecture}, vol. 166, pp. 103462, 2025, doi: \href{https://doi.org/10.1016/j.sysarc.2025.103462}{10.1016/j.sysarc.2025.103462}.
+\bibitem{huang} Yin Huang, Letian Zhang, Jie Xu, Learning the Optimal Path and DNN Partition for Collaborative Edge Inference, \emph{IEEE Transactions on Mobile Computing}, vol. 25, no. 2, pp. 1499--1512, 2026, doi: \href{https://doi.org/10.1109/TMC.2025.3602966}{10.1109/TMC.2025.3602966}.
+\bibitem{survey} Yuntao Hao, Nan Ding, Weiguo Xia, et al., DNN Partitioning for Cooperative Inference in Edge Intelligence: Modeling, Solutions, Toolchains, \emph{ACM Computing Surveys}, vol. 58, no. 8, pp. 1--34, 2026, doi: \href{https://doi.org/10.1145/3786145}{10.1145/3786145}.
+\bibitem{privguard} Yunhao Yao, Zhiqiang Wang, Puhan Luo, et al., PrivGuardInfer: Channel-Level End-Edge Collaborative Inference Strategy Protecting Original Inputs and Sensitive Attributes, \emph{IEEE Transactions on Mobile Computing}, vol. 25, no. 2, pp. 2480--2497, 2026, doi: \href{https://doi.org/10.1109/TMC.2025.3607483}{10.1109/TMC.2025.3607483}.
+\bibitem{uav} Shuman Meng, Bin Li, Zhao Yi, et al., DNN Task Partitioning and Migration Strategies in Multi-UAV-Assisted Mobile Edge Computing, \emph{IEEE Internet of Things Journal}, vol. 13, no. 13, pp. 28758--28769, 2026, doi: \href{https://doi.org/10.1109/JIOT.2026.3685675}{10.1109/JIOT.2026.3685675}.
+\bibitem{latentattacks} Milin Zhang, Mohammad Abdi, Jonathan Ashdown, et al., Adversarial attacks to latent representations of distributed neural networks in split computing, \emph{Computer Networks}, vol. 273, pp. 111755, 2025, doi: \href{https://doi.org/10.1016/j.comnet.2025.111755}{10.1016/j.comnet.2025.111755}.
+\bibitem{cecn} Jieying Zhou, Xiao Zhang, Wei Li, et al., CECN-DNN: A cloud-edge collaborative inference approach to intrusion detection, \emph{Computer Networks}, vol. 285, pp. 112127, 2026, doi: \href{https://doi.org/10.1016/j.comnet.2026.112127}{10.1016/j.comnet.2026.112127}.
+\bibitem{selforganized} Manuel Schrauth, Moritz Thome, Torsten Ohlenforst, et al., Self-Organized Neural Network Inference in Dynamic Edge Networks, \emph{Applied Sciences}, vol. 15, no. 23, pp. 12615, 2025, doi: \href{https://doi.org/10.3390/app152312615}{10.3390/app152312615}.
+\bibitem{migration} Boyin Zhang, Yinggang Li, Shigeng Zhang, et al., An Adaptive Task Migration Scheduling Approach for Edge‐Cloud Collaborative Inference, \emph{Wireless Communications and Mobile Computing}, vol. 2022, no. 1, art. 8804530, 2022, doi: \href{https://doi.org/10.1155/2022/8804530}{10.1155/2022/8804530}.
+\bibitem{jointdeploy} Wenchen He, Shaoyong Guo, Song Guo, et al., Joint DNN Partition Deployment and Resource Allocation for Delay-Sensitive Deep Learning Inference in IoT, \emph{IEEE Internet of Things Journal}, vol. 7, no. 10, pp. 9241--9254, 2020, doi: \href{https://doi.org/10.1109/JIOT.2020.2981338}{10.1109/JIOT.2020.2981338}.
+\bibitem{batch} Yong Pan, Chenchen Zhang, Yue Zeng, et al., Model partitioning and batch scheduling: Leveraging local resources for cost-efficient device-cloud collaborative serverless inference, \emph{Future Generation Computer Systems}, vol. 179, pp. 108338, 2026, doi: \href{https://doi.org/10.1016/j.future.2025.108338}{10.1016/j.future.2025.108338}.
+\bibitem{feature} Tong Bai, Bohan Huang, Zichuan Xu, et al., Adaptive Feature Compression and Resource Scheduling for End-Edge Co-Inference, \emph{IEEE Internet of Things Journal}, vol. 12, no. 18, pp. 37255--37270, 2025, doi: \href{https://doi.org/10.1109/JIOT.2025.3582220}{10.1109/JIOT.2025.3582220}.
+\bibitem{rap} Yiran Li, Zhen Liu, Ze Kou, et al., Real-Time Adaptive Partition and Resource Allocation for Multi-User End-Cloud Inference Collaboration in Mobile Environment, \emph{IEEE Transactions on Mobile Computing}, vol. 23, no. 12, pp. 13076--13094, 2024, doi: \href{https://doi.org/10.1109/TMC.2024.3430103}{10.1109/TMC.2024.3430103}.
+\bibitem{optical} Tingting Bao, Xin Li, Yongli Zhao, et al., Joint optimization of DNN model partitioning and slice delivery for distributed edge-cloud inference over optical networks, \emph{Journal of Optical Communications and Networking}, vol. 17, no. 11, pp. 1047, 2025, doi: \href{https://doi.org/10.1364/jocn.575114}{10.1364/jocn.575114}.
+\bibitem{hga} Cong Ye, Ruihang Zhang, Xiao Li, et al., HGA-DP: Optimal Partitioning of Multimodal DNNs Enabling Real-Time Image Inference for AR-Assisted Communication Maintenance on Cloud-Edge-End Systems, \emph{Information}, vol. 16, no. 12, pp. 1091, 2025, doi: \href{https://doi.org/10.3390/info16121091}{10.3390/info16121091}.
+\bibitem{dvfo} Ziyang Zhang, Yang Zhao, Huan Li, et al., DVFO: Learning-Based DVFS for Energy-Efficient Edge-Cloud Collaborative Inference, \emph{IEEE Transactions on Mobile Computing}, vol. 23, no. 10, pp. 9042--9059, 2024, doi: \href{https://doi.org/10.1109/TMC.2024.3357218}{10.1109/TMC.2024.3357218}.
+\bibitem{uncertainty} Ali Asghari, Delaram Hosseinalizadeh, Uncertainty-Gated Split Inference With Online Threshold Adaptation for Edge-IoT Under Dynamic Networks, \emph{IEEE Internet of Things Journal}, vol. 13, no. 21, pp. 50526--50534, 2026, doi: \href{https://doi.org/10.1109/JIOT.2026.3725141}{10.1109/JIOT.2026.3725141}.
+\bibitem{resilience} Yuanwei Zhu, Jiafan He, Lu Wang, et al., Distributed AI Inference in Uncertain Edge Networks: Collaboration, Adaptation, and Resilience, \emph{IEEE Internet of Things Journal}, pp. 1--1, 2026, doi: \href{https://doi.org/10.1109/JIOT.2026.3748480}{10.1109/JIOT.2026.3748480}.
+\bibitem{hierarchical} Zengzipeng Tang, Yuxuan Sun, Wei Chen, et al., Hierarchical Online-Scheduling for Energy-Efficient Split Inference With Progressive Transmission, \emph{IEEE Transactions on Mobile Computing}, vol. 25, no. 11, pp. 21076--21089, 2026, doi: \href{https://doi.org/10.1109/TMC.2026.3715641}{10.1109/TMC.2026.3715641}.
+\bibitem{eddnn} Yakun Huang, Xiuquan Qiao, Wenhai Lai, et al., Enabling DNN Acceleration With Data and Model Parallelization Over Ubiquitous End Devices, \emph{IEEE Internet of Things Journal}, vol. 9, no. 16, pp. 15053--15065, 2022, doi: \href{https://doi.org/10.1109/JIOT.2021.3112715}{10.1109/JIOT.2021.3112715}.
+\bibitem{cobc} Xingyu Feng, Lingjie Li, Tenglong Wang, et al., CoBC: A Blockchain-Based Collaborative Inference System for Internet of Things, \emph{IEEE Internet of Things Journal}, vol. 10, no. 24, pp. 21389--21400, 2023, doi: \href{https://doi.org/10.1109/JIOT.2023.3290092}{10.1109/JIOT.2023.3290092}.
+\bibitem{digitaltwin} Shisheng Hu, Mushu Li, Jie Gao, et al., Adaptive Device-Edge Collaboration on DNN Inference in AIoT: A Digital-Twin-Assisted Approach, \emph{IEEE Internet of Things Journal}, vol. 11, no. 7, pp. 12893--12908, 2024, doi: \href{https://doi.org/10.1109/JIOT.2023.3336600}{10.1109/JIOT.2023.3336600}.
+\bibitem{vitudp} Hyochan Kim, Jong Hwan Ko, Efficient Vision Transformer Inference via UDP for Edge-Cloud Collaboration: An Adaptive Loss Detection Approach, \emph{Journal of Computer Science and Technology}, vol. 41, no. 2, pp. 710--723, 2026, doi: \href{https://doi.org/10.1007/s11390-025-5171-z}{10.1007/s11390-025-5171-z}.
+\end{thebibliography}
+\end{document}

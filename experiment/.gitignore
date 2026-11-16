@@ -1,0 +1,8 @@
+data/
+checkpoints/
+profiles/
+runs/
+*.pt
+*.pth
+__pycache__/
+*.pyc
